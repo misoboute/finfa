@@ -1,0 +1,77 @@
+# FINFA — Free InterNet For All (VLESS+Reality direct, no CDN)
+#
+# Isolation posture:
+#   - bridge networking (NOT host), NO --privileged
+#   - panel published to 127.0.0.1 only (SSH-tunnel admin access)
+#   - Reality published publicly on tcp/443 (intended)
+#   - resource caps so FINFA cannot starve anything else running on the box.
+#     Defaults assume a small VPS (≈2 vCPU / 2 GiB). Tune cpus/mem_limit to your
+#     host; if FINFA is the only thing on the box you can raise them.
+#
+# NOTE: this file pins inbound ports explicitly. Adding a new Xray inbound later
+# means adding its published port here too.
+
+services:
+  marzban:
+    build:
+      context: .
+      dockerfile: marzban.Dockerfile    # extends gozargah/marzban:latest with our panel CA
+    image: finfa-marzban-image          # local tag; rebuild with: sudo docker compose build marzban
+    container_name: finfa-marzban
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # SSL certs make Marzban bind Uvicorn to 0.0.0.0 (required for Docker
+      # port publishing to work). The cert is signed by a private CA and is
+      # only ever seen through an SSH tunnel, so the browser warning is fine.
+      UVICORN_SSL_CERTFILE: /var/lib/marzban/panel-tls/panel.crt
+      UVICORN_SSL_KEYFILE:  /var/lib/marzban/panel-tls/panel.key
+    volumes:
+      - marzban-data:/var/lib/marzban
+      # Current Xray core (downloaded by scripts/fetch-xray.sh). The stock image
+      # bundles an older core that CANNOT parse the post-quantum X25519MLKEM768
+      # TLS key share that newer clients (v2rayNG/v2rayN, Xray 25.x+) now send by
+      # default — with the old core, every updated client fails Reality auth
+      # ("processed invalid connection"). The wrapper shims `xray x25519` back to
+      # the label format the panel parses (see xray-wrap.sh); all else passes
+      # straight through. To upgrade later: re-run fetch-xray.sh + compose up -d.
+      - ./xray/bin/xray:/usr/local/bin/xray.real:ro
+      - ./xray/bin/xray-wrap.sh:/usr/local/bin/xray:ro
+      # config-as-code: edit the file in the repo + `docker compose restart`,
+      # rather than editing core config via the panel (mounted read-only).
+      - ./xray/xray_config.json:/var/lib/marzban/xray_config.json:ro
+      # Panel TLS cert (private CA, localhost use only via SSH tunnel).
+      - ./secrets/panel-tls:/var/lib/marzban/panel-tls:ro
+    ports:
+      - "127.0.0.1:${PANEL_PORT:-8000}:8000"   # panel — LOOPBACK ONLY
+      - "443:443"                               # VLESS + Reality — public
+    # ---- resource caps (non-swarm `docker compose` honors these) ----
+    cpus: "1.5"
+    mem_limit: 1g
+    mem_reservation: 256m
+    pids_limit: 512
+    # ---- hardening ----
+    security_opt:
+      - no-new-privileges:true
+    # explicitly NOT: privileged, NOT network_mode: host
+
+  # Per-user concurrency cap. Disabled by default; enable with:
+  #   docker compose --profile watcher up -d
+  watcher:
+    build: ./concurrency-watcher
+    container_name: finfa-watcher
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - marzban
+    volumes:
+      - marzban-data:/var/lib/marzban:ro        # read the Xray access log
+    cpus: "0.25"
+    mem_limit: 128m
+    security_opt:
+      - no-new-privileges:true
+    profiles: ["watcher"]
+
+volumes:
+  marzban-data:
+    name: finfa-marzban-data

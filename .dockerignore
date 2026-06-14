@@ -1,0 +1,9 @@
+.git
+.env*
+secrets/*
+!secrets/panel-tls
+xray/bin/xray
+**/__pycache__
+*.log
+firewall/backup-*.nft
+firewall/*.rendered.nft

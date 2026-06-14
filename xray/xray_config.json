@@ -1,0 +1,64 @@
+{
+  "dns": {
+    "servers": ["1.1.1.1", "8.8.8.8"]
+  },
+  "log": {
+    "loglevel": "warning",
+    "access": "/var/lib/marzban/access.log",
+    "error": "/var/lib/marzban/error.log"
+  },
+  "inbounds": [
+    {
+      "tag": "VLESS-Reality",
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "__REALITY_SNI__:443",
+          "xver": 0,
+          "serverNames": ["__REALITY_SNI__"],
+          "privateKey": "__REALITY_PRIVATE_KEY__",
+          "shortIds": ["__REALITY_SHORT_ID__"]
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      }
+    }
+  ],
+  "outbounds": [
+    { "protocol": "freedom", "tag": "direct" },
+    { "protocol": "blackhole", "tag": "block" }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "_comment": "CRITICAL ISOLATION — do not weaken. VPN users can reach the open internet and nowhere inside the box.",
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "block"
+      },
+      {
+        "type": "field",
+        "ip": ["127.0.0.1/8", "::1/128"],
+        "outboundTag": "block"
+      },
+      {
+        "_comment": "Optional hygiene: drop torrent so the exit IP isn't flagged.",
+        "type": "field",
+        "protocol": ["bittorrent"],
+        "outboundTag": "block"
+      }
+    ]
+  }
+}

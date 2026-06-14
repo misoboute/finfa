@@ -1,0 +1,42 @@
+#!/usr/sbin/nft -f
+# FINFA baseline HOST firewall — family "inet" (covers IPv4 + IPv6).
+#
+# Scope: this protects HOST process listeners (e.g. sshd). It is a self-contained
+# table with ONLY an input chain — it creates no forward/output chains, so
+# Docker's own nat/forward rules are left completely untouched.
+#
+# Why Docker-published ports are NOT filtered here:
+#   - Inbound traffic to a Docker-published port is DNAT'd and traverses the
+#     FORWARD path (Docker's chains), not this INPUT chain.
+#   - Reality (tcp/443) is published publicly on purpose.
+#   - The Marzban panel is published to 127.0.0.1 only, so Docker binds it to
+#     loopback and it is unreachable off-box regardless of this ruleset.
+#
+# The default-drop input policy below means: nothing new reaches host processes
+# except SSH. Everything else inbound is dropped.
+#
+# __SSH_PORT__ is substituted with your real SSH port by apply-firewall.sh
+# (auto-detected by setup.sh) so a non-standard SSH port can't lock you out.
+
+table inet finfa {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        # loopback + already-established flows
+        iif "lo" accept
+        ct state established,related accept
+        ct state invalid drop
+
+        # ICMP: v4 ping + v6 Neighbor Discovery (REQUIRED, or IPv6 breaks)
+        ip protocol icmp accept
+        ip6 nexthdr icmpv6 accept
+
+        # SSH — KEEP OPEN to avoid lockout (port auto-detected at setup time)
+        tcp dport __SSH_PORT__ accept
+
+        # VLESS+Reality host listeners (harmless duplicate of the Docker publish)
+        tcp dport 443 accept
+
+        # everything else inbound: dropped by the chain policy
+    }
+}
