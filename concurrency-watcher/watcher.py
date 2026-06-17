@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""FINFA concurrency cap (Phase 8).
+"""FINFA concurrency cap.
 
-Tails Xray's access log, counts distinct source IPs per user (Marzban sets the
-client `email` tag to the username) over a sliding window, and when a user
+Tails Xray's access log, counts distinct source NETWORKS per user (Marzban sets
+the client `email` tag to the username) over a sliding window, and when a user
 exceeds WATCH_IP_LIMIT, disables them via the Marzban API for a cooldown, then
 re-enables. Start in WATCH_DRY_RUN=true to observe before enforcing.
+
+Counting is by /WATCH_IP_PREFIX network (default /24), NOT by individual IPs: a
+single device behind carrier-grade NAT / mobile data rotates its public IP on
+nearly every connection, so /32 counting falsely flags one phone as many
+devices. Bucketing by /24 collapses that to one "place" while still catching a
+config shared across genuinely different networks/cities.
 
 This is intentionally small and dependency-light. It is NOT a substitute for the
 Xray routing isolation block — it only enforces the per-user device cap.
@@ -12,6 +18,7 @@ Xray routing isolation block — it only enforces the per-user device cap.
 import os
 import re
 import time
+import ipaddress
 import logging
 from collections import defaultdict, deque
 
@@ -19,6 +26,8 @@ import requests
 
 LOG_PATH   = os.environ.get("WATCH_ACCESS_LOG", "/var/lib/marzban/access.log")
 IP_LIMIT   = int(os.environ.get("WATCH_IP_LIMIT", "1"))
+IP_PREFIX  = int(os.environ.get("WATCH_IP_PREFIX", "24"))    # IPv4: count distinct /24 networks
+IP6_PREFIX = int(os.environ.get("WATCH_IP6_PREFIX", "64"))   # IPv6: count distinct /64 networks
 WINDOW     = int(os.environ.get("WATCH_WINDOW_SECONDS", "120"))
 COOLDOWN   = int(os.environ.get("WATCH_COOLDOWN_SECONDS", "300"))
 DRY_RUN    = os.environ.get("WATCH_DRY_RUN", "true").lower() in ("1", "true", "yes")
@@ -84,14 +93,24 @@ class Marzban:
         return False
 
 
+def net_key(ip):
+    """Bucket an IP into its network, so one device behind CGNAT/mobile (which
+    rotates its public IP per-connection) counts as ONE 'place', not many."""
+    try:
+        plen = IP6_PREFIX if ":" in ip else IP_PREFIX
+        return str(ipaddress.ip_network(f"{ip}/{plen}", strict=False).network_address)
+    except ValueError:
+        return ip
+
+
 def prune(user, now):
     dq = seen[user]
     while dq and now - dq[0][0] > WINDOW:
         dq.popleft()
 
 
-def distinct_ips(user):
-    return {ip for _, ip in seen[user]}
+def distinct_nets(user):
+    return {net_key(ip) for _, ip in seen[user]}
 
 
 def follow(path):
@@ -121,8 +140,8 @@ def follow(path):
 
 def main():
     mz = Marzban()
-    log.info("watcher start: limit=%d window=%ds cooldown=%ds dry_run=%s log=%s",
-             IP_LIMIT, WINDOW, COOLDOWN, DRY_RUN, LOG_PATH)
+    log.info("watcher start: limit=%d (distinct /%d networks) window=%ds cooldown=%ds dry_run=%s log=%s",
+             IP_LIMIT, IP_PREFIX, WINDOW, COOLDOWN, DRY_RUN, LOG_PATH)
     for line in follow(LOG_PATH):
         now = time.time()
 
@@ -155,10 +174,10 @@ def main():
             dq.append((now, ip))
         prune(user, now)
 
-        ips = distinct_ips(user)
-        if len(ips) > IP_LIMIT:
-            log.warning("CAP TRIPPED user=%s ips=%d>%d (%s)",
-                        user, len(ips), IP_LIMIT, ", ".join(sorted(ips)))
+        nets = distinct_nets(user)
+        if len(nets) > IP_LIMIT:
+            log.warning("CAP TRIPPED user=%s nets=%d>%d (/%d: %s)",
+                        user, len(nets), IP_LIMIT, IP_PREFIX, ", ".join(sorted(nets)))
             if mz.set_status(user, "disabled"):
                 cooldown_until[user] = now + COOLDOWN
             # if disable failed, don't set cooldown — retry on next matching line
