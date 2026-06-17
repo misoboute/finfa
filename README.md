@@ -8,10 +8,12 @@ network isolation so VPN users can reach the open internet and **nothing on your
 box**.
 
 > **Scope.** Reality is a *direct* path: clients connect to your server's raw IP.
-> It defeats deep-packet inspection but **not** a plain IP block. If a network
-> blocks your server's IP outright, those users need a CDN front-end (not in this
-> version). Everyone whose network can route to your IP gets a full DPI-resistant
-> tunnel.
+> It defeats deep-packet inspection but **not** a plain IP block. When a censor
+> blacklists your server's IP outright (Iran does this to VPS ranges), flip on the
+> built-in **Cloudflare CDN front** (`./scripts/enable-cdn.sh`) — it hides your
+> origin IP behind Cloudflare so blocking it is pointless. See
+> [Beating IP blocks](#beating-ip-blocks-cloudflare) and
+> [`docs/cdn-cloudflare.md`](docs/cdn-cloudflare.md).
 
 ## What you need
 
@@ -72,6 +74,27 @@ Hand users a config with the platform-by-platform guide in
 [`docs/CONNECT-GUIDE.md`](docs/CONNECT-GUIDE.md) (drop their link in place of
 `{{CONFIG_LINK}}`). **Send links privately — never via insecure or monitored channels (SMS, untrusted messengers).**
 
+## Beating IP blocks (Cloudflare)
+
+Reality hides *what* your traffic is, but not *where* it goes — a censor can still
+blacklist your server's raw IP (Iran does this routinely to datacenter ranges).
+FINFA ships an optional **Cloudflare Tunnel** front that settles this: clients
+connect to Cloudflare's IPs and an **outbound-only** connector relays to your
+origin, so your server IP is never exposed and blocking it does nothing.
+
+You need a cheap domain on a free Cloudflare account, then:
+
+```bash
+./scripts/enable-cdn.sh                       # prompts for domain + tunnel token, wires it all up
+python3 scripts/marzban.py link NAME --ws     # hand each user their CDN link
+```
+
+Click-by-click (domain → tunnel → token) is in
+[`docs/cdn-cloudflare.md`](docs/cdn-cloudflare.md). It runs **alongside** Reality,
+so users who aren't IP-blocked keep the direct path. If a domain itself ever gets
+SNI-blocked, point another at the same tunnel — rotating a cheap domain beats
+moving servers.
+
 ## How it's isolated (the important part)
 
 - **Xray routing block** (`xray/xray_config.json`): VPN users egress to the open
@@ -93,11 +116,11 @@ the isolation hard-gate you should run before real handoffs.
 finfa/
 ├─ setup.sh                  # the wizard — start here
 ├─ README.md  ·  RUNBOOK.md  # this · phase-by-phase manual + diagnostics
-├─ docker-compose.yml        # Marzban (panel localhost + Reality 443) + watcher
+├─ docker-compose.yml        # Marzban (panel localhost + Reality 443) + watcher + cloudflared
 ├─ marzban.Dockerfile        # Marzban image + our private panel CA
 ├─ .env.example              # config template (setup.sh writes .env for you)
 ├─ xray/
-│  ├─ xray_config.json       # Reality inbound + CRITICAL isolation block (templated)
+│  ├─ xray_config.json       # Reality + (optional) WS inbound + CRITICAL isolation block
 │  └─ bin/xray-wrap.sh       # core shim (xray binary is fetched, not committed)
 ├─ firewall/                 # default-drop ruleset + anti-lockout apply/persist
 ├─ scripts/
@@ -109,10 +132,11 @@ finfa/
 │  ├─ 04-up.sh               # build + compose up
 │  ├─ fetch-xray.sh          # download current Xray core
 │  ├─ validate-sni.sh        # TLS 1.3 check for a camouflage SNI
-│  ├─ marzban.py             # ops CLI: set-host / adduser / link / list
-│  └─ diagnose.sh            # status / logs / reality / debug / clienttest
+│  ├─ enable-cdn.sh          # turn on the Cloudflare CDN front (beats IP blocks)
+│  ├─ marzban.py             # ops CLI: set-host / set-ws-host / migrate-ws / adduser / link / list
+│  └─ diagnose.sh            # status / logs / reality / cdn / debug / clienttest
 ├─ concurrency-watcher/      # per-user device-cap container
-├─ docs/                     # CONNECT-GUIDE.md · verify-isolation.md
+├─ docs/                     # CONNECT-GUIDE.md · verify-isolation.md · cdn-cloudflare.md
 └─ secrets/                  # keys, certs, links (gitignored, 0600)
 ```
 

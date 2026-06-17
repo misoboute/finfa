@@ -1,15 +1,14 @@
-# FINFA — Free InterNet For All (VLESS+Reality direct, no CDN)
+# FINFA — Free InterNet For All (VLESS+Reality direct; optional Cloudflare CDN front)
 #
 # Isolation posture:
 #   - bridge networking (NOT host), NO --privileged
 #   - panel published to 127.0.0.1 only (SSH-tunnel admin access)
 #   - Reality published publicly on tcp/443 (intended)
+#   - the optional WS inbound (for the CDN path) is NOT published — it is only
+#     reachable inside the compose network, by cloudflared, as marzban:8080
 #   - resource caps so FINFA cannot starve anything else running on the box.
 #     Defaults assume a small VPS (≈2 vCPU / 2 GiB). Tune cpus/mem_limit to your
 #     host; if FINFA is the only thing on the box you can raise them.
-#
-# NOTE: this file pins inbound ports explicitly. Adding a new Xray inbound later
-# means adding its published port here too.
 
 services:
   marzban:
@@ -45,6 +44,8 @@ services:
     ports:
       - "127.0.0.1:${PANEL_PORT:-8000}:8000"   # panel — LOOPBACK ONLY
       - "443:443"                               # VLESS + Reality — public
+      # NOTE: the WS inbound (:8080) is intentionally NOT published — the CDN
+      # path reaches it internally via cloudflared (service below).
     # ---- resource caps (non-swarm `docker compose` honors these) ----
     cpus: "1.5"
     mem_limit: 1g
@@ -71,6 +72,24 @@ services:
     security_opt:
       - no-new-privileges:true
     profiles: ["watcher"]
+
+  # Cloudflare Tunnel front (optional — defeats IP-blocking by hiding the origin).
+  # Clients connect to Cloudflare's IPs; this connector dials OUT to Cloudflare and
+  # relays to the WS inbound (marzban:8080), so the server IP is never exposed.
+  # Don't start this by hand — run scripts/enable-cdn.sh, which sets the token,
+  # wires the Marzban host, assigns users, and brings this up. See docs/cdn-cloudflare.md.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: finfa-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN:-}
+    depends_on:
+      - marzban
+    security_opt:
+      - no-new-privileges:true
+    profiles: ["cdn"]
 
 volumes:
   marzban-data:

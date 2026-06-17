@@ -33,6 +33,23 @@
         "enabled": true,
         "destOverride": ["http", "tls", "quic"]
       }
+    },
+    {
+      "_comment": "Optional Cloudflare-CDN path. INERT until you run scripts/enable-cdn.sh: no users/host point at it by default. Bound inside the container only (cloudflared reaches it as marzban:8080) — never published to the host or internet.",
+      "tag": "VLESS-WS",
+      "listen": "0.0.0.0",
+      "port": 8080,
+      "protocol": "vless",
+      "settings": { "clients": [], "decryption": "none" },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": { "path": "__WS_PATH__" }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      }
     }
   ],
   "outbounds": [

@@ -207,6 +207,17 @@ phase_users() {
   fi
 }
 
+phase_cdn() {
+  step "Cloudflare CDN front (optional)"
+  note "Reality connects to your raw IP: DPI-proof, but a plain IP block (e.g. by a"
+  note "state censor) still kills it. Fronting with Cloudflare hides your IP so"
+  note "blocking it is pointless. Needs a domain on a free Cloudflare account."
+  note "You can always do this later instead:  ./scripts/enable-cdn.sh"
+  if confirm "Set up the Cloudflare CDN front now?" n; then
+    ./scripts/enable-cdn.sh || warn "enable-cdn.sh did not finish; re-run it any time."
+  fi
+}
+
 summary() {
   step "Done"
   cat <<EOF
@@ -221,6 +232,7 @@ FINFA is up.
   Client guide    : docs/CONNECT-GUIDE.md  (paste a link in for ${_C_B}{{CONFIG_LINK}}${_C_0})
   Diagnose        : ./scripts/diagnose.sh status
   Isolation gate  : docs/verify-isolation.md  (run before real handoffs)
+  Beat IP-blocks  : ./scripts/enable-cdn.sh   (Cloudflare CDN front; needs a domain)
 
 Secrets (0600, gitignored): secrets/reality.txt, secrets/panel-tls/, .env
 EOF
@@ -239,6 +251,7 @@ main() {
   phase_firewall
   phase_isolation
   phase_users
+  phase_cdn
   summary
 }
 main "$@"

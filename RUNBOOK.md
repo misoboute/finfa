@@ -6,9 +6,9 @@ runbook documents each phase so you can understand, audit, or run it manually.
 not skip.**
 
 > Reality is a **direct** path (client → raw VPS IP). It is DPI-resistant but
-> does not defeat a plain IP block. If a network blocks your VPS IP outright,
-> that user needs a CDN front-end (not in this v1). Everyone whose network can
-> route to the IP gets a fully DPI-resistant tunnel.
+> does not defeat a plain IP block. If a censor blacklists your VPS IP, enable the
+> **Cloudflare CDN front** (Phase 10) to hide the origin. Everyone whose network
+> can route to the IP also gets the fully DPI-resistant direct tunnel.
 
 ---
 
@@ -75,13 +75,26 @@ Set `TELEGRAM_API_TOKEN` (from @BotFather) and `TELEGRAM_ADMIN_ID` (from
 @userinfobot) in `.env`, then `docker compose up -d` — Marzban's built-in admin
 bot activates. Manage users from your phone.
 
+## Phase 10 — Cloudflare CDN front (optional; the answer to an IP block)
+When a censor blacklists your VPS IP, Reality can't help (the block is at the IP
+layer). Front the service with a **Cloudflare Tunnel** so clients hit Cloudflare,
+not your IP — the origin is reached only by an outbound connector and is never
+exposed. Get a cheap domain on a free Cloudflare account, create a tunnel with a
+public hostname (`<domain>` → HTTP `marzban:8080`), then:
+`./scripts/enable-cdn.sh` (prompts for domain + token, wires the WS host, assigns
+users, tests end-to-end). Hand out CDN links with
+`python3 scripts/marzban.py link NAME --ws`. Runs alongside Reality. Full
+click-by-click: `docs/cdn-cloudflare.md`. If a domain gets SNI-blocked, point
+another at the same tunnel (`set-ws-host --domain NEW`) — cheaper than moving box.
+
 ---
 
 ## Diagnostics
-`./scripts/diagnose.sh status|logs|reality|debug on|off|clienttest LINK`.
+`./scripts/diagnose.sh status|logs|reality|cdn|debug on|off|clienttest LINK`.
 Most outages are: core too old for modern clients, a broken config, the panel
-down, or the firewall. `clienttest` connects through the tunnel from the box
-itself — the decisive end-to-end test. See comments in the script.
+down, the firewall, or (after an IP block) the CDN tunnel. `clienttest` connects
+through the tunnel from the box itself — the decisive end-to-end test; it handles
+both Reality and WS/CDN links. See comments in the script.
 
 ## Rollback
 - Stop stack: `docker compose down` (keeps the data volume).

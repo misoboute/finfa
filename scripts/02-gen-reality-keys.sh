@@ -44,12 +44,17 @@ REALITY_SHORT_ID=$SID
 EOF
 chmod 600 "$SECRET"
 
-echo "==> Injecting SNI / privateKey / shortId into $CFG"
+# Random, per-deploy path for the (optional) Cloudflare WS inbound, so the path
+# isn't a constant fingerprint across FINFA installs. Harmless if CDN is unused.
+WSPATH="${WSPATH:-/$(openssl rand -hex 8)}"
+
+echo "==> Injecting SNI / privateKey / shortId / ws-path into $CFG"
 # Replace placeholders (works on a fresh config; re-run regenerates from secrets if needed).
 sed -i \
   -e "s#__REALITY_SNI__#${REALITY_SNI}#g" \
   -e "s#__REALITY_PRIVATE_KEY__#${PRIV}#g" \
   -e "s#__REALITY_SHORT_ID__#${SID}#g" \
+  -e "s#__WS_PATH__#${WSPATH}#g" \
   "$CFG"
 
 echo
