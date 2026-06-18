@@ -35,16 +35,16 @@
       }
     },
     {
-      "_comment": "Optional Cloudflare-CDN path (XHTTP transport). INERT until you run scripts/enable-cdn.sh: no users/host point at it by default. Bound inside the container only (cloudflared reaches it as marzban:8080) — never published to the host or internet.",
+      "_comment": "Optional Cloudflare-CDN path. INERT until you run scripts/enable-cdn.sh: no users/host point at it by default. Bound inside the container only (cloudflared reaches it as marzban:8080) — never published to the host or internet.",
       "tag": "VLESS-WS",
       "listen": "0.0.0.0",
       "port": 8080,
       "protocol": "vless",
       "settings": { "clients": [], "decryption": "none" },
       "streamSettings": {
-        "network": "xhttp",
+        "network": "ws",
         "security": "none",
-        "xhttpSettings": { "path": "__CDN_PATH__", "mode": "auto" }
+        "wsSettings": { "path": "__CDN_PATH__" }
       },
       "sniffing": {
         "enabled": true,
