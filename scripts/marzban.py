@@ -74,13 +74,23 @@ def token():
     return req("POST", "/api/admin/token", form={"username": USER, "password": PASS})["access_token"]
 
 
-def ws_path():
-    """Read the VLESS-WS inbound path from the Xray config."""
+def cdn_path():
+    """Read the VLESS-WS/XHTTP inbound path from the Xray config."""
     cfg = json.load(open(os.path.join(ROOT, "xray", "xray_config.json")))
     for ib in cfg.get("inbounds", []):
         if ib.get("tag") == "VLESS-WS":
-            return ib.get("streamSettings", {}).get("wsSettings", {}).get("path", "/")
+            ss = ib.get("streamSettings", {})
+            return (ss.get("xhttpSettings") or ss.get("wsSettings") or {}).get("path", "/")
     return "/"
+
+
+def cdn_transport():
+    """Return the transport network type for the CDN inbound (xhttp or ws)."""
+    cfg = json.load(open(os.path.join(ROOT, "xray", "xray_config.json")))
+    for ib in cfg.get("inbounds", []):
+        if ib.get("tag") == "VLESS-WS":
+            return ib.get("streamSettings", {}).get("network", "xhttp")
+    return "xhttp"
 
 
 def fetch_ech(domain):
@@ -100,14 +110,15 @@ def user_uuid(tok, name):
 
 
 def cdn_links(uuid, name):
-    """Build WS+TLS+ECH links pinned to each clean IP (no DNS, hidden SNI)."""
+    """Build XHTTP+TLS+ECH links pinned to each clean IP (no DNS, hidden SNI)."""
     ech = fetch_ech(DOMAIN)
     ech_q = "&ech=" + urllib.parse.quote(ech, safe="") if ech else ""
-    path_q = urllib.parse.quote(ws_path(), safe="")
+    path_q = urllib.parse.quote(cdn_path(), safe="")
+    transport = cdn_transport()
     links = []
     for i, ip in enumerate(CLEAN_IPS, 1):
         label = urllib.parse.quote(f"{REMARK}-{i} ({name})")
-        links.append(f"vless://{uuid}@{ip}:443?security=tls&type=ws&headerType=&path={path_q}"
+        links.append(f"vless://{uuid}@{ip}:443?security=tls&type={transport}&path={path_q}"
                      f"&host={DOMAIN}&sni={DOMAIN}&fp=chrome{ech_q}#{label}")
     return links
 
@@ -203,13 +214,13 @@ def cmd_set_ws_host(a):
     hosts = req("GET", "/api/hosts", token=tok)
     hosts["VLESS-WS"] = [{
         "remark": f"{REMARK}-CDN ({{USERNAME}})",
-        "address": addr, "port": 443, "sni": domain, "host": domain, "path": ws_path(),
+        "address": addr, "port": 443, "sni": domain, "host": domain, "path": cdn_path(),
         "security": "tls", "alpn": "", "fingerprint": "chrome",
         "allowinsecure": False, "is_disabled": False,
     }]
     req("PUT", "/api/hosts", token=tok, data=hosts)
     ech = "yes" if fetch_ech(domain) else "NO (SNI will be visible — is ECH on for the zone?)"
-    print(f"CDN host set: addr={addr} sni/host={domain} path={ws_path()} | ECH published: {ech}")
+    print(f"CDN host set: addr={addr} sni/host={domain} path={cdn_path()} | ECH published: {ech}")
 
 
 def cmd_migrate_ws(a):

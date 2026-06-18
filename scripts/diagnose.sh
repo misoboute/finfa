@@ -29,7 +29,7 @@ status)
   echo "== Xray core version (in container) =="
   $DKR exec finfa-marzban xray version 2>/dev/null | head -1 || echo "  cannot exec xray"
   echo "== config sanity =="
-  if grep -q '__REALITY_\|__WS_PATH__' "$CFG"; then echo "  ✗ placeholders still present — run scripts/02-gen-reality-keys.sh"; else echo "  ✓ no placeholders"; fi
+  if grep -q '__REALITY_\|__CDN_PATH__' "$CFG"; then echo "  ✗ placeholders still present — run scripts/02-gen-reality-keys.sh"; else echo "  ✓ no placeholders"; fi
   grep -q 'geoip:private' "$CFG" && echo "  ✓ isolation block present" || echo "  ✗ ISOLATION BLOCK MISSING"
   echo "== CDN front =="
   $DKR ps --filter name=finfa-cloudflared --format '{{.Names}}  {{.Status}}' | grep -q . \
@@ -89,10 +89,11 @@ if sec == "reality":
     out["streamSettings"] = {"network":typ,"security":"reality","realitySettings":{
         "serverName":q.get("sni",""),"fingerprint":q.get("fp","chrome"),
         "publicKey":q.get("pbk",""),"shortId":q.get("sid",""),"spiderX":q.get("spx","")}}
-else:  # ws + tls (Cloudflare CDN path)
-    out["streamSettings"] = {"network":typ,"security":"tls",
-        "tlsSettings":{"serverName":q.get("sni","")},
-        "wsSettings":{"path":q.get("path","/"),"headers":{"Host":q.get("host","")}}}
+else:  # xhttp/ws + tls (Cloudflare CDN path)
+    ss = {"network":typ,"security":"tls","tlsSettings":{"serverName":q.get("sni","")}}
+    ts = {"path":q.get("path","/"),"headers":{"Host":q.get("host","")}}
+    ss["xhttpSettings" if typ == "xhttp" else "wsSettings"] = ts
+    out["streamSettings"] = ss
 print(json.dumps({"inbounds":[{"port":10808,"listen":"127.0.0.1","protocol":"socks",
     "settings":{"udp":True}}],"outbounds":[out]}))
 PY
