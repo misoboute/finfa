@@ -53,6 +53,17 @@ cdn)
   echo "== connector log (want 'Registered tunnel connection') =="
   $DKR logs --tail 40 finfa-cloudflared 2>&1 | grep -iE 'registered tunnel connection|error|failed|unauthorized' | tail -8 | sed 's/^/  /' \
     || echo "  no logs (is the cdn profile up? scripts/enable-cdn.sh)"
+  echo "== config + ECH (SNI hiding) =="
+  DOMAIN=$(grep -E '^CF_DOMAIN=' .env 2>/dev/null | cut -d= -f2-)
+  CLEAN=$(grep -E '^CF_CLEAN_IP=' .env 2>/dev/null | cut -d= -f2-)
+  echo "  domain=${DOMAIN:-<unset>}  clean_ip=${CLEAN:-<unset>}"
+  if [ -n "$DOMAIN" ]; then
+    if dig +short HTTPS "$DOMAIN" 2>/dev/null | grep -q 'ech='; then
+      echo "  ✓ ECH published — real SNI stays hidden (links embed it)"
+    else
+      echo "  ✗ no ECH for $DOMAIN — SNI is visible; enable ECH on the zone or expect SNI-filter risk"
+    fi
+  fi
   ;;
 debug)
   mode="${2:-}"; [[ "$mode" == on || "$mode" == off ]] || { echo "usage: diagnose.sh debug on|off"; exit 1; }

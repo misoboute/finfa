@@ -75,17 +75,19 @@ Set `TELEGRAM_API_TOKEN` (from @BotFather) and `TELEGRAM_ADMIN_ID` (from
 @userinfobot) in `.env`, then `docker compose up -d` — Marzban's built-in admin
 bot activates. Manage users from your phone.
 
-## Phase 10 — Cloudflare CDN front (optional; the answer to an IP block)
-When a censor blacklists your VPS IP, Reality can't help (the block is at the IP
-layer). Front the service with a **Cloudflare Tunnel** so clients hit Cloudflare,
-not your IP — the origin is reached only by an outbound connector and is never
-exposed. Get a cheap domain on a free Cloudflare account, create a tunnel with a
-public hostname (`<domain>` → HTTP `marzban:8080`), then:
-`./scripts/enable-cdn.sh` (prompts for domain + token, wires the WS host, assigns
-users, tests end-to-end). Hand out CDN links with
-`python3 scripts/marzban.py link NAME --ws`. Runs alongside Reality. Full
-click-by-click: `docs/cdn-cloudflare.md`. If a domain gets SNI-blocked, point
-another at the same tunnel (`set-ws-host --domain NEW`) — cheaper than moving box.
+## Phase 10 — Cloudflare CDN front (optional; the answer to censorship escalation)
+When a censor escalates past DPI, this front beats all three of their moves at once:
+**IP block** (Cloudflare Tunnel hides the origin IP), **DNS poisoning** (links pin a
+clean Cloudflare IP — no lookup), and **SNI filtering** (ECH encrypts the real
+domain; only `cloudflare-ech.com` is on the wire). Get a cheap domain on a free
+Cloudflare account with **ECH enabled** (`dig +short HTTPS <domain>` shows `ech=`),
+create a tunnel with a public hostname (`<domain>` → HTTP `marzban:8080`), then
+`./scripts/enable-cdn.sh` (prompts for domain, token, clean IP(s); wires it; tests
+end-to-end). Our own tooling builds the links (Marzban can't emit ECH):
+`marzban.py adduser NAME --save` (one), `batch a b c --save` (many),
+`link NAME` (reprint), `regen --save` (refresh all after an IP/ECH change — the ECH
+key is pulled from DNS each time). Runs alongside Reality. Full walkthrough:
+`docs/cdn-cloudflare.md`.
 
 ---
 

@@ -74,26 +74,27 @@ Hand users a config with the platform-by-platform guide in
 [`docs/CONNECT-GUIDE.md`](docs/CONNECT-GUIDE.md) (drop their link in place of
 `{{CONFIG_LINK}}`). **Send links privately — never via insecure or monitored channels (SMS, untrusted messengers).**
 
-## Beating IP blocks (Cloudflare)
+## Beating censorship escalation (Cloudflare CDN front)
 
-Reality hides *what* your traffic is, but not *where* it goes — a censor can still
-blacklist your server's raw IP (Iran does this routinely to datacenter ranges).
-FINFA ships an optional **Cloudflare Tunnel** front that settles this: clients
-connect to Cloudflare's IPs and an **outbound-only** connector relays to your
-origin, so your server IP is never exposed and blocking it does nothing.
+Reality hides *what* your traffic is, but not *where* it goes. A determined censor
+escalates, and FINFA's optional **Cloudflare front** answers each step:
 
-You need a cheap domain on a free Cloudflare account, then:
+- **IP block** → a **Cloudflare Tunnel** (outbound-only) hides your origin IP; clients hit Cloudflare.
+- **DNS poisoning** → links **pin a clean Cloudflare IP**, so the client never does a DNS lookup.
+- **SNI filtering** → **ECH** encrypts the real domain in the handshake; only `cloudflare-ech.com` is visible.
+
+You need a cheap domain on a free Cloudflare account (with ECH enabled), then:
 
 ```bash
-./scripts/enable-cdn.sh                       # prompts for domain + tunnel token, wires it all up
-python3 scripts/marzban.py link NAME --ws     # hand each user their CDN link
+./scripts/enable-cdn.sh                     # prompts for domain, tunnel token, clean IP(s); wires it all up
+python3 scripts/marzban.py link NAME        # a user's link(s): clean-IP + ECH
+python3 scripts/marzban.py batch a b c --save   # create many at once
+python3 scripts/marzban.py regen --save     # refresh everyone (after an IP/ECH change)
 ```
 
-Click-by-click (domain → tunnel → token) is in
-[`docs/cdn-cloudflare.md`](docs/cdn-cloudflare.md). It runs **alongside** Reality,
-so users who aren't IP-blocked keep the direct path. If a domain itself ever gets
-SNI-blocked, point another at the same tunnel — rotating a cheap domain beats
-moving servers.
+The tool builds the `vless://` links itself (Marzban can't emit ECH), pulling the
+current ECH key from DNS each time so links never go stale. Click-by-click is in
+[`docs/cdn-cloudflare.md`](docs/cdn-cloudflare.md). Runs **alongside** Reality.
 
 ## How it's isolated (the important part)
 
@@ -133,7 +134,7 @@ finfa/
 │  ├─ fetch-xray.sh          # download current Xray core
 │  ├─ validate-sni.sh        # TLS 1.3 check for a camouflage SNI
 │  ├─ enable-cdn.sh          # turn on the Cloudflare CDN front (beats IP blocks)
-│  ├─ marzban.py             # ops CLI: set-host / set-ws-host / migrate-ws / adduser / link / list
+│  ├─ marzban.py             # ops CLI: adduser / batch / link / regen / set-ws-host / migrate-ws (clean-IP + ECH links)
 │  └─ diagnose.sh            # status / logs / reality / cdn / debug / clienttest
 ├─ concurrency-watcher/      # per-user device-cap container
 ├─ docs/                     # CONNECT-GUIDE.md · verify-isolation.md · cdn-cloudflare.md
