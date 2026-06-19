@@ -119,7 +119,7 @@ def cdn_links(uuid, name):
     for i, ip in enumerate(CLEAN_IPS, 1):
         label = urllib.parse.quote(f"{REMARK}-{i} ({name})")
         links.append(f"vless://{uuid}@{ip}:443?security=tls&type={transport}&path={path_q}"
-                     f"&host={DOMAIN}&sni={DOMAIN}&fp=chrome{ech_q}#{label}")
+                     f"&host={DOMAIN}&sni={DOMAIN}&fp=chrome&alpn=http%2F1.1{ech_q}#{label}")
     return links
 
 
