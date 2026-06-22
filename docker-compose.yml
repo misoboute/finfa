@@ -91,6 +91,27 @@ services:
       - no-new-privileges:true
     profiles: ["cdn"]
 
+  # Subscription server — serves fresh links (live ECH key from DoH) on every
+  # request so clients auto-update without manual resends. Exposed via the
+  # Cloudflare tunnel at sub.<CF_DOMAIN>. Start via enable-cdn.sh or:
+  #   docker compose --profile cdn up -d sub-server
+  sub-server:
+    build: ./sub-server
+    container_name: finfa-sub-server
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./xray/xray_config.json:/app/xray_config.json:ro
+    environment:
+      MARZBAN_HOST: marzban
+    depends_on:
+      - marzban
+    cpus: "0.1"
+    mem_limit: 64m
+    security_opt:
+      - no-new-privileges:true
+    profiles: ["cdn"]
+
 volumes:
   marzban-data:
     name: finfa-marzban-data

@@ -18,6 +18,7 @@ Subcommands:
   adduser NAME [--gb N --days N --save]    create a user + print its link(s)
   batch (NAME... | --file F) [--gb N --days N --save]   create many at once
   link NAME [--reality]         print a user's link(s)
+  sub-url NAME [--base-url U]   print the subscription URL for a user
   regen [--save --exclude a,b]  reprint links for ALL users (rollout / ECH refresh)
   list                          list usernames and status
 """
@@ -271,6 +272,18 @@ def cmd_link(a):
         print(l)
 
 
+def cmd_sub_url(a):
+    tok = token()
+    info = req("GET", f"/api/user/{a.name}", token=tok)
+    sub_token = info.get("subscription_url", "").split("/sub/")[-1]
+    if not sub_token:
+        sys.exit(f"no subscription token for {a.name}")
+    base = a.base_url or (f"https://sub.{DOMAIN}" if DOMAIN else "")
+    if not base:
+        sys.exit("set CF_DOMAIN in .env or pass --base-url")
+    print(f"{base}/sub/{sub_token}")
+
+
 def cmd_regen(a):
     tok = token()
     excl = set((a.exclude or "").split(",")) | {""}
@@ -301,6 +314,7 @@ def main():
     sp = sub.add_parser("adduser"); sp.add_argument("name"); sp.add_argument("--gb", type=float, default=0); sp.add_argument("--days", type=int, default=0); sp.add_argument("--save", action="store_true"); sp.set_defaults(fn=cmd_adduser)
     sp = sub.add_parser("batch"); sp.add_argument("names", nargs="*"); sp.add_argument("--file"); sp.add_argument("--gb", type=float, default=0); sp.add_argument("--days", type=int, default=0); sp.add_argument("--save", action="store_true"); sp.set_defaults(fn=cmd_batch)
     sp = sub.add_parser("link"); sp.add_argument("name"); sp.add_argument("--reality", action="store_true"); sp.set_defaults(fn=cmd_link)
+    sp = sub.add_parser("sub-url"); sp.add_argument("name"); sp.add_argument("--base-url", default=""); sp.set_defaults(fn=cmd_sub_url)
     sp = sub.add_parser("regen"); sp.add_argument("--save", action="store_true"); sp.add_argument("--exclude", default="testuser"); sp.set_defaults(fn=cmd_regen)
     sub.add_parser("list").set_defaults(fn=cmd_list)
     a = p.parse_args(); a.fn(a)
