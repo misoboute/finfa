@@ -10,7 +10,7 @@ GET /sub/<marzban_sub_token>
 Clients auto-update by polling this URL (recommended: every 12h, via proxy).
 The ECH key in every response is live — links never go stale.
 """
-import base64, http.server, json, os, re, ssl, sys, urllib.parse, urllib.request
+import base64, http.server, json, os, re, ssl, struct, sys, urllib.parse, urllib.request
 
 ROOT = os.environ.get("FINFA_ROOT", "/app")
 MARZBAN_HOST = os.environ.get("MARZBAN_HOST", "marzban")
@@ -58,7 +58,8 @@ def get_user(tok, name):
 
 
 def fetch_ech():
-    """Fetch current ECH key via DoH at pinned 1.1.1.1 (bypasses poisoned DNS)."""
+    """Fetch current ECH key via DoH at pinned 1.1.1.1 (bypasses poisoned DNS).
+    Parses RFC 3597 binary HTTPS record to extract SvcParam key 5 (ECH)."""
     url = f"https://1.1.1.1/dns-query?name={urllib.parse.quote(DOMAIN)}&type=HTTPS"
     r = urllib.request.Request(url)
     r.add_header("Accept", "application/dns-json")
@@ -66,10 +67,24 @@ def fetch_ech():
     try:
         with urllib.request.urlopen(r, timeout=8) as resp:
             for ans in json.loads(resp.read()).get("Answer", []):
-                if ans.get("type") == 65:
-                    m = re.search(r"ech=([A-Za-z0-9+/=]+)", ans.get("data", ""))
-                    if m:
-                        return m.group(1)
+                if ans.get("type") != 65:
+                    continue
+                data = ans.get("data", "")
+                # Text format: "1 . alpn=h2 ech=AEX..." (some resolvers)
+                m = re.search(r"ech=([A-Za-z0-9+/=]+)", data)
+                if m:
+                    return m.group(1)
+                # RFC 3597 binary format: "\# <len> <hex bytes>"
+                parts = data.split()
+                if len(parts) >= 3 and parts[0] == r"\#":
+                    raw = bytes.fromhex("".join(parts[2:]))
+                    pos = 3  # skip 2-byte priority + 1-byte root target
+                    while pos + 4 <= len(raw):
+                        key = struct.unpack_from(">H", raw, pos)[0]; pos += 2
+                        vlen = struct.unpack_from(">H", raw, pos)[0]; pos += 2
+                        if key == 5:  # ECH SvcParam
+                            return base64.b64encode(raw[pos:pos + vlen]).decode()
+                        pos += vlen
     except Exception:
         pass
     return ""
